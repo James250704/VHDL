@@ -7,7 +7,7 @@ entity Final_01 is
         clk       : in STD_LOGIC;                     -- 50 MHz system clock
         ps2_clk   : in STD_LOGIC;                     -- PS/2 clock line
         ps2_data  : in STD_LOGIC;                     -- PS/2 data line
-        LEDG      : out STD_LOGIC_VECTOR(9 downto 0); -- Green LEDs
+        LEDG      : out STD_LOGIC_VECTOR(9 downto 0); -- Green LEDs (for debugging)
         HEX3, HEX2, HEX1, HEX0 : out STD_LOGIC_VECTOR(6 downto 0); -- 7-segment displays
         LCD_DATA  : out STD_LOGIC_VECTOR(7 downto 0); -- LCD data
         LCD_EN, LCD_RS, LCD_RW : out STD_LOGIC        -- LCD control signals
@@ -50,11 +50,13 @@ begin
             ascii_code => ascii_code
         );
 
-    -- Voting logic process
+    -- Voting and display update process
     process(clk)
     begin
         if rising_edge(clk) then
+            -- Debugging: Toggle LEDG(0) when new ASCII code is detected
             if ascii_new = '1' then
+                LEDG(0) <= not LEDG(0); -- Toggle LED to indicate input detection
                 case ascii_code is
                     when "0011001" => -- ASCII '1' for cat vote
                         if cat_votes < 99 then cat_votes <= cat_votes + 1; end if;
@@ -114,5 +116,7 @@ begin
         end if;
     end process;
 
-    LEDG <= (others => '0');  -- LEDs not used here
+    -- Unused LEDs (except LEDG(0) for debugging)
+    LEDG(9 downto 1) <= (others => '0');
+
 end architecture;
