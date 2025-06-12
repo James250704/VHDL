@@ -78,15 +78,15 @@ architecture Behavioral of Lab12_1 is
 
     -- Kirby Image scaling and positioning parameters
     constant BITMAP_ORIGINAL_ROWS : INTEGER := 16;
-    constant BITMAP_ORIGINAL_COLS : INTEGER := 16;
+    constant BITMAP_ORIGINAL_COLS : INTEGER := 32; -- Corrected to match the 32-bit width of the bitmap
     constant SCALE_FACTOR         : INTEGER := 20;
-    constant IMAGE_DISPLAY_WIDTH  : INTEGER := BITMAP_ORIGINAL_COLS * SCALE_FACTOR; -- 320
+    constant IMAGE_DISPLAY_WIDTH  : INTEGER := BITMAP_ORIGINAL_COLS * SCALE_FACTOR; -- 640
     constant IMAGE_DISPLAY_HEIGHT : INTEGER := BITMAP_ORIGINAL_ROWS * SCALE_FACTOR; -- 320
 
-    -- Top-left corner of the 320x320 Kirby image on the VGA screen (640x480)
-    constant IMG_START_COL : INTEGER := (H_DISPLAY_AREA - IMAGE_DISPLAY_WIDTH) / 2;  -- (640-320)/2 = 160
+    -- Top-left corner of the 640x320 Kirby image on the VGA screen (640x480)
+    constant IMG_START_COL : INTEGER := (H_DISPLAY_AREA - IMAGE_DISPLAY_WIDTH) / 2;  -- (640-640)/2 = 0
     constant IMG_START_ROW : INTEGER := (V_DISPLAY_AREA - IMAGE_DISPLAY_HEIGHT) / 2; -- (480-320)/2 = 80
-    constant IMG_END_COL   : INTEGER := IMG_START_COL + IMAGE_DISPLAY_WIDTH - 1;     -- 160 + 320 - 1 = 479
+    constant IMG_END_COL   : INTEGER := IMG_START_COL + IMAGE_DISPLAY_WIDTH - 1;     -- 0 + 640 - 1 = 639
     constant IMG_END_ROW   : INTEGER := IMG_START_ROW + IMAGE_DISPLAY_HEIGHT - 1;    -- 80 + 320 - 1 = 399
 
 begin
@@ -136,7 +136,7 @@ begin
 
                 -- Horizontal Sync (VGA_HS) Generation (active low)
                 if h_counter >= H_DISPLAY_AREA + H_FRONT_PORCH and
-                    h_counter < H_DISPLAY_AREA + H_FRONT_PORCH + H_SYNC_PULSE then
+                   h_counter < H_DISPLAY_AREA + H_FRONT_PORCH + H_SYNC_PULSE then
                     VGA_HS <= '0';
                 else
                     VGA_HS <= '1';
@@ -144,7 +144,7 @@ begin
 
                 -- Vertical Sync (VGA_VS) Generation (active low)
                 if v_counter >= V_DISPLAY_AREA + V_FRONT_PORCH and
-                    v_counter < V_DISPLAY_AREA + V_FRONT_PORCH + V_SYNC_PULSE then
+                   v_counter < V_DISPLAY_AREA + V_FRONT_PORCH + V_SYNC_PULSE then
                     VGA_VS <= '0';
                 else
                     VGA_VS <= '1';
@@ -157,36 +157,51 @@ begin
                     internal_pixel_row <= v_counter; -- Current row in active display
                 else
                     internal_video_on  <= '0';
-                    internal_pixel_col <= 0; -- Or any value, not used when video_on is '0'
-                    internal_pixel_row <= 0; -- Or any value
+                    internal_pixel_col <= 0; -- Not used when video_on is '0'
+                    internal_pixel_row <= 0;
                 end if;
             end if; -- end pixel_clk_enable check
         end if; -- end clock edge check
     end process vga_timing_logic;
 
+    -- Kirby Image Processing
     kirby_image_processor : process (internal_video_on, internal_pixel_row, internal_pixel_col)
         variable original_bitmap_row_idx : INTEGER range 0 to BITMAP_ORIGINAL_ROWS - 1;
         variable original_bitmap_col_idx : INTEGER range 0 to BITMAP_ORIGINAL_COLS - 1;
-        variable kirby_pixel_data_row    : STD_LOGIC_VECTOR(0 to BITMAP_ORIGINAL_COLS * 2 - 1);
+        variable kirby_pixel_data_row    : STD_LOGIC_VECTOR(0 to BITMAP_ORIGINAL_COLS - 1);
         variable color_code_2bit         : STD_LOGIC_VECTOR(1 downto 0);
     begin
         if internal_video_on = '0' then
             kirby_rgb_data <= BG_COLOR; -- Output background during blanking
         else
-            -- Check if the current VGA pixel (internal_pixel_row, internal_pixel_col)
-            -- is within the scaled Kirby image display area
+            -- Check if the current VGA pixel is within the scaled Kirby image display area
             if (internal_pixel_row >= IMG_START_ROW and internal_pixel_row <= IMG_END_ROW and
-                internal_pixel_col >= IMG_START_COL and internal_pixel_col     <= IMG_END_COL) then
+                internal_pixel_col >= IMG_START_COL and internal_pixel_col <= IMG_END_COL) then
 
                 original_bitmap_row_idx := (internal_pixel_row - IMG_START_ROW) / SCALE_FACTOR;
                 original_bitmap_col_idx := (internal_pixel_col - IMG_START_COL) / SCALE_FACTOR;
 
                 kirby_pixel_data_row := kirby(original_bitmap_row_idx);
 
-                color_code_2bit(1) := kirby_pixel_data_row(original_bitmap_col_idx * 2);
-                color_code_2bit(0) := kirby_pixel_data_row(original_bitmap_col_idx * 2 + 1);
+                color_code_2bit(1) := kirby_pixel_data_row(original_bitmap_col_idx * 2);     -- Bit 0
+                color_code_2bit(0) := kirby_pixel_data_row(original_bitmap_col_idx * 2 + 1); -- Bit 1
 
                 case color_code_2bit is
-                    when "00"   => kirby_rgb_data   <= WHITE;
-                    when "01"   => kirby_rgb_data   <= BLACK;
-                    when "10"   => kirby_rgb_data   <= MOMO_PIN
+                    when "00"   => kirby_rgb_data <= WHITE;
+                    when "01"   => kirby_rgb_data <= BLACK;
+                    when "10"   => kirby_rgb_data <= MOMO_PINK;
+                    when "11"   => kirby_rgb_data <= PINK;
+                    when others => kirby_rgb_data <= BG_COLOR; -- Default to background
+                end case;
+            else
+                kirby_rgb_data <= BG_COLOR; -- Background outside Kirby image
+            end if;
+        end if;
+    end process kirby_image_processor;
+
+    -- Output RGB data to VGA
+    VGA_R <= kirby_rgb_data(11 downto 8); -- Red component
+    VGA_G <= kirby_rgb_data(7 downto 4);  -- Green component
+    VGA_B <= kirby_rgb_data(3 downto 0);  -- Blue component
+
+end architecture Behavioral;
